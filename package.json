@@ -2,8 +2,13 @@
   "name": "native-file-system-adapter",
   "version": "3.0.1",
   "description": "Native File System API",
-  "main": "src/es6.js",
-  "module": "./src/es6.js",
+  "main": "dist/es6.cjs",
+  "browser": "dist/es6.global.js",
+  "exports": {
+    "types": "./dist/es6.d.ts",
+    "import": "./dist/es6.js",
+    "require": "./dist/es6.cjs"
+  },
   "directories": {
     "example": "example"
   },
@@ -14,7 +19,7 @@
     "test:node": "node test/test-node.js",
     "test:deno": "deno run --allow-read --allow-write --allow-net test/test-deno.js",
     "test:wpt-in-deno": "deno run --allow-read --allow-write --allow-net test/test-wpt-in-deno.js",
-    "build": "rm -rf dist && rollup -c rollup.config.js",
+    "build": "rm -rf dist  &&  tsup src/es6.js --global-name NativeFileSystemAdapter --format esm,cjs,iife --splitting --cjsInterop --dts --sourcemap --minify",
     "_prepublishOnly": "rm -rf types && tsc -p jsconfig.json"
   },
   "repository": {
@@ -24,7 +29,7 @@
   "engines": {
     "node": ">=14.8.0"
   },
-  "types": "types/mod.d.ts",
+  "types": "types/es6.d.ts",
   "keywords": [
     "filesystem",
     "file",
@@ -82,6 +87,7 @@
     "rollup-plugin-terser": "^7.0.2",
     "standard": "^16.0.4",
     "tape": "^5.5.2",
+    "tsup": "^8.2.4",
     "typescript": "^4.5.5"
   }
 }
