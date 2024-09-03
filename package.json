@@ -1,5 +1,5 @@
 {
-  "name": "native-file-system-adapter",
+  "name": "@tech_query/native-file-system-adapter",
   "version": "3.0.1",
   "description": "Native File System API",
   "main": "dist/es6.cjs",
@@ -50,6 +50,9 @@
   "contributors": [
     {
       "name": "Alexandru Ciuca"
+    },
+    {
+      "email": "shiy2008@gmail.com"
     }
   ],
   "homepage": "https://github.com/jimmywarting/native-file-system-adapter#readme",

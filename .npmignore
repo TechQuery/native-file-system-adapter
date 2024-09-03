@@ -1,4 +1,6 @@
-/tsconfig.json
-/copy-polyfill.js
+old-tsconfig
+jsconfig.json
+rollup.config.js
 /test
+/example
 .*
