@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
     "noEmit": false,
-    "target": "es5",
+    "target": "ES2015",
     "module": "esnext",
     "declaration": true,
     "allowJs": true,
-    "checkJs": true,
     "removeComments": true,
     "emitDeclarationOnly": true,
+    "lib": ["ES2019", "DOM", "DOM.Iterable"],
     "outDir": "./types/"
   },
   "exclude": ["node_modules"],

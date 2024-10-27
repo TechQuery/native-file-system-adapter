@@ -1,13 +1,14 @@
 export default FileSystemHandle;
+export type FileSystemHandlePermissionDescriptor = {
+    mode?: ("read" | "readwrite");
+};
 export class FileSystemHandle {
     constructor(adapter: FileSystemHandle & {
-        writable;
+        writable: any;
     });
     name: string;
-    kind: ('file' | 'directory');
-    queryPermission({ mode }?: {
-        mode?: string;
-    }): Promise<any>;
+    kind: ("file" | "directory");
+    queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<any>;
     requestPermission({ mode }?: {
         mode?: string;
     }): Promise<any>;

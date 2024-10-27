@@ -3,10 +3,8 @@ import config from './config.js'
 const { WritableStream } = config
 
 class FileSystemWritableFileStream extends WritableStream {
-  #writer
   constructor (writer) {
     super(writer)
-    this.#writer = writer
     // Stupid Safari hack to extend native classes
     // https://bugs.webkit.org/show_bug.cgi?id=226201
     Object.setPrototypeOf(this, FileSystemWritableFileStream.prototype)

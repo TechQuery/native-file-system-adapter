@@ -7,6 +7,6 @@ export class FileSystemFileHandle extends FileSystemHandle {
     getFile(): Promise<File>;
     [kAdapter]: any;
 }
-import FileSystemHandle from "./FileSystemHandle.js";
-import FileSystemWritableFileStream from "./FileSystemWritableFileStream.js";
+import FileSystemHandle from './FileSystemHandle.js';
+import FileSystemWritableFileStream from './FileSystemWritableFileStream.js';
 declare const kAdapter: unique symbol;

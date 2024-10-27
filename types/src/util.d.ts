@@ -2,17 +2,17 @@ export function fromDataTransfer(entries: any): Promise<import("./FileSystemDire
 export function getDirHandlesFromInput(input: any): Promise<import("./FileSystemDirectoryHandle.js").default>;
 export function getFileHandlesFromInput(input: any): Promise<import("./FileSystemFileHandle.js").default[]>;
 export namespace errors {
-    const INVALID: string[];
-    const GONE: string[];
-    const MISMATCH: string[];
-    const MOD_ERR: string[];
+    let INVALID: string[];
+    let GONE: string[];
+    let MISMATCH: string[];
+    let MOD_ERR: string[];
     function SYNTAX(m: any): string[];
-    const SECURITY: string[];
-    const DISALLOWED: string[];
+    let SECURITY: string[];
+    let DISALLOWED: string[];
 }
 export namespace config {
-    const writable: {
+    let writable: {
         new <W = any>(underlyingSink?: UnderlyingSink<W>, strategy?: QueuingStrategy<W>): WritableStream<W>;
-        prototype: WritableStream<any>;
+        prototype: WritableStream;
     };
 }

@@ -18,5 +18,5 @@ export class FileSystemDirectoryHandle extends FileSystemHandle {
     [kAdapter]: any;
     [Symbol.asyncIterator](): AsyncGenerator<[string, FileSystemHandle | FileSystemDirectoryHandle], any, any>;
 }
-import FileSystemHandle from "./FileSystemHandle.js";
+import FileSystemHandle from './FileSystemHandle.js';
 declare const kAdapter: unique symbol;
