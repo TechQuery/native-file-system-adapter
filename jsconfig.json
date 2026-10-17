@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "noEmit": false,
-    "target": "esnext",
+    "target": "es5",
     "module": "esnext",
     "declaration": true,
     "allowJs": true,
