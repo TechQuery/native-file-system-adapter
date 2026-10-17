@@ -19,20 +19,28 @@
   },
   "type": "module",
   "scripts": {
-    "test": "exit 0",
+    "test": "npm run test:wpt-node",
     "test:browser": "php -S localhost:4444 & open http://localhost:4444/example/test.html",
     "test:node": "node test/test-node.js",
+    "test:serialize": "node test/test-serialize.js",
     "test:deno": "deno run --allow-read --allow-write --allow-net test/test-deno.js",
     "test:wpt-in-deno": "deno run --allow-read --allow-write --allow-net test/test-wpt-in-deno.js",
+    "test:wpt-node": "node test/wpt-node.js",
+    "test:wpt-browser": "npx playwright test",
+    "test:wpt-browser:chromium": "npx playwright test --project=chromium",
+    "test:wpt-browser:firefox": "npx playwright test --project=firefox",
+    "test:wpt-browser:webkit": "npx playwright test --project=webkit",
+    "fetch-wpt": "bash scripts/fetch-wpt.sh",
     "build": "rm -rf .parcel-cache/ dist/ types/  &&  tsc -p jsconfig.json  &&  parcel build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "_prepublishOnly": "rm -rf types && tsc -p jsconfig.json"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/TechQuery/native-file-system-adapter.git"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "types": "types/src/es6.d.ts",
   "keywords": [
@@ -57,13 +65,11 @@
       "name": "Alexandru Ciuca"
     },
     {
+      "name": "TechQuery",
       "email": "shiy2008@gmail.com"
     }
   ],
   "homepage": "https://github.com/TechQuery/native-file-system-adapter#readme",
-  "optionalDependencies": {
-    "fetch-blob": "^3.2.0"
-  },
   "standard": {
     "globals": [
       "File",
@@ -89,6 +95,7 @@
     }
   ],
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/filesystem": "^0.0.36",
     "parcel": "^2.12.0",
     "standard": "^17.1.2",

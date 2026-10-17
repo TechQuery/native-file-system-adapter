@@ -24,7 +24,7 @@ class FileSystemDirectoryHandle extends FileSystemHandle {
     if (name === '') {
       throw new TypeError(`Name can't be an empty string.`)
     }
-    if (name === '.' || name === '..' || name.includes('/')) {
+    if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
       throw new TypeError(`Name contains invalid characters.`)
     }
     options.create = !!options.create
@@ -42,16 +42,6 @@ class FileSystemDirectoryHandle extends FileSystemHandle {
         : new FileSystemDirectoryHandle(entry)]
   }
 
-  /** @deprecated use .entries() instead */
-  async * getEntries() {
-    const {FileSystemFileHandle} = await import('./FileSystemFileHandle.js')
-    console.warn('deprecated, use .entries() instead')
-    for await (let entry of this[kAdapter].entries())
-      yield entry.kind === 'file'
-        ? new FileSystemFileHandle(entry)
-        : new FileSystemDirectoryHandle(entry)
-  }
-
   /**
    * @param {string} name Name of the file
    * @param {object} [options]
@@ -60,7 +50,7 @@ class FileSystemDirectoryHandle extends FileSystemHandle {
   async getFileHandle (name, options = {}) {
     const {FileSystemFileHandle} = await import('./FileSystemFileHandle.js')
     if (name === '') throw new TypeError(`Name can't be an empty string.`)
-    if (name === '.' || name === '..' || name.includes('/')) {
+    if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
       throw new TypeError(`Name contains invalid characters.`)
     }
     options.create = !!options.create
@@ -77,7 +67,7 @@ class FileSystemDirectoryHandle extends FileSystemHandle {
     if (name === '') {
       throw new TypeError(`Name can't be an empty string.`)
     }
-    if (name === '.' || name === '..' || name.includes('/')) {
+    if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
       throw new TypeError(`Name contains invalid characters.`)
     }
     options.recursive = !!options.recursive // cuz node's fs.rm require boolean

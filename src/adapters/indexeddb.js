@@ -1,8 +1,9 @@
 /* global indexedDB, Blob, File, DOMException */
 
 import { errors } from '../util.js'
+import { BlobSink } from './blobsink.js'
 
-const { INVALID, GONE, MISMATCH, MOD_ERR, SYNTAX, ABORT } = errors
+const { GONE, MISMATCH, MOD_ERR, ABORT } = errors
 
 /**
  * @param {IDBTransaction} tx
@@ -13,7 +14,7 @@ function setupTxErrorHandler (tx, onerror) {
   tx.onabort = () => onerror(tx.error || new DOMException(...ABORT))
 }
 
-class Sink {
+class Sink extends BlobSink {
   /**
    * @param {IDBDatabase} db
    * @param {IDBValidKey} id
@@ -21,80 +22,10 @@ class Sink {
    * @param {File} file
    */
   constructor (db, id, size, file) {
+    super(file)
     this.db = db
     this.id = id
     this.size = size
-    this.position = 0
-    this.file = file
-  }
-
-  write (chunk) {
-    if (typeof chunk === 'object') {
-      if (chunk.type === 'write') {
-        if (Number.isInteger(chunk.position) && chunk.position >= 0) {
-          if (this.size < chunk.position) {
-            this.file = new File(
-              [this.file, new ArrayBuffer(chunk.position - this.size)],
-              this.file.name,
-              this.file
-            )
-          }
-          this.position = chunk.position
-        }
-        if (!('data' in chunk)) {
-          throw new DOMException(...SYNTAX('write requires a data argument'))
-        }
-        chunk = chunk.data
-      } else if (chunk.type === 'seek') {
-        if (Number.isInteger(chunk.position) && chunk.position >= 0) {
-          if (this.size < chunk.position) {
-            throw new DOMException(...INVALID)
-          }
-          this.position = chunk.position
-          return
-        } else {
-          throw new DOMException(...SYNTAX('seek requires a position argument'))
-        }
-      } else if (chunk.type === 'truncate') {
-        if (Number.isInteger(chunk.size) && chunk.size >= 0) {
-          let file = this.file
-          file = chunk.size < this.size
-            ? new File([file.slice(0, chunk.size)], file.name, file)
-            : new File([file, new Uint8Array(chunk.size - this.size)], file.name, file)
-
-          this.size = file.size
-          if (this.position > file.size) {
-            this.position = file.size
-          }
-          this.file = file
-          return
-        } else {
-          throw new DOMException(...SYNTAX('truncate requires a size argument'))
-        }
-      }
-    }
-
-    chunk = new Blob([chunk])
-
-    let blob = this.file
-    // Calc the head and tail fragments
-    const head = blob.slice(0, this.position)
-    const tail = blob.slice(this.position + chunk.size)
-
-    // Calc the padding
-    let padding = this.position - head.size
-    if (padding < 0) {
-      padding = 0
-    }
-    blob = new File([
-      head,
-      new Uint8Array(padding),
-      chunk,
-      tail
-    ], blob.name)
-    this.size = blob.size
-    this.position += chunk.size
-    this.file = blob
   }
 
   close () {
@@ -109,6 +40,10 @@ class Sink {
       tx.onerror = reject
       tx.onabort = reject
     })
+  }
+
+  abort () {
+    // Nothing to clean up – the write was never committed to IDB.
   }
 }
 
@@ -132,6 +67,13 @@ class FileHandle {
     return this._id === other._id
   }
 
+  getUniqueId () {
+    // IDB keys are unique per entry; prefix 'f' (file) to distinguish from
+    // directories that could share the same numeric key value.
+    const raw = ('f' + this._id.toString(16)).padStart(32, '0')
+    return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20, 32)}`
+  }
+
   async getFile () {
     /** @type {File} */
     const file = await new Promise((resolve, reject) => {
@@ -147,6 +89,16 @@ class FileHandle {
     let file = await this.getFile() // Used directly to test existences
     file = opts.keepExistingData ? file : new File([], this.name)
     return new Sink(this._db, this._id, file.size, file)
+  }
+
+  async remove () {
+    return new Promise((resolve, reject) => {
+      const [tx, table] = store(this._db)
+      table.delete(this._id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = reject
+      tx.onabort = reject
+    })
   }
 }
 
@@ -213,6 +165,13 @@ class FolderHandle {
   /** @param {FolderHandle} other  */
   isSameEntry (other) {
     return this._id === other._id
+  }
+
+  getUniqueId () {
+    // IDB keys are unique per entry; prefix 'd' (directory) to distinguish from
+    // files that could share the same numeric key value.
+    const raw = ('d' + this._id.toString(16)).padStart(32, '0')
+    return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20, 32)}`
   }
 
   /**
@@ -284,6 +243,29 @@ class FolderHandle {
         delete cwd[name]
         table.put(cwd, this._id)
         rimraf(evt, toDelete, !!opts.recursive)
+      }
+      tx.oncomplete = resolve
+      tx.onerror = reject
+      tx.onabort = () => {
+        reject(new DOMException(...MOD_ERR))
+      }
+    })
+  }
+
+  async remove (options = {}) {
+    return new Promise((resolve, reject) => {
+      const [tx, table] = store(this._db)
+      const cwdQ = table.get(this._id)
+      cwdQ.onsuccess = (evt) => {
+        const cwd = cwdQ.result
+        if (!options.recursive) {
+          for (const key of Object.keys(cwd)) {
+            if (key !== '_') {
+              return reject(new DOMException(...MOD_ERR))
+            }
+          }
+        }
+        rimraf(evt, cwd, !!options.recursive)
       }
       tx.oncomplete = resolve
       tx.onerror = reject

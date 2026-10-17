@@ -4,12 +4,19 @@ const native = globalThis.showDirectoryPicker
 
 /**
  * @param {Object} [options]
- * @param {boolean} [options._preferPolyfill] If you rather want to use the polyfill instead of the native
+ * @param {('native' | 'input')[]} [options._preferredMethods] Ordered list of preferred methods
  * @returns {Promise<FileSystemDirectoryHandle>}
  */
 async function showDirectoryPicker (options = {}) {
-  if (native && !options._preferPolyfill) {
-    return native(options)
+  const methods = options._preferredMethods || ['native', 'input']
+
+  for (const method of methods) {
+    if (method === 'native' && native) {
+      return native(options)
+    }
+    if (method === 'input') {
+      break
+    }
   }
 
   const input = document.createElement('input')
@@ -27,10 +34,17 @@ async function showDirectoryPicker (options = {}) {
   // Lazy load while the user is choosing the directory
   const p = import('./util.js')
 
-  await new Promise(resolve => {
-    input.addEventListener('change', resolve)
+  const evt = await new Promise(resolve => {
+    input.onchange = input.onchange = resolve
     input.click()
   })
+
+  input.onchange = input.onchange = null
+  input.remove()
+
+  if (evt.type === 'cancel') {
+    throw new DOMException("Failed to execute 'showDirectoryPicker' on 'file input': The user aborted a request.", 'AbortError')
+  }
 
   return p.then(mod => mod.getDirHandlesFromInput(input))
 }

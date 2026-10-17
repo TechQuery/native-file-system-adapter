@@ -1,90 +1,101 @@
-import { join, basename } from 'https://deno.land/std@0.108.0/path/mod.ts'
+import { join, basename, dirname } from 'jsr:@std/path'
 import { errors } from '../util.js'
 
-const { INVALID, GONE, MISMATCH, MOD_ERR, SYNTAX } = errors
+const { GONE, MISMATCH, MOD_ERR, NO_MOD } = errors
 
-// TODO:
-// - either depend on fetch-blob.
-// - push for https://github.com/denoland/deno/pull/10969
-// - or extend the File class like i did in that PR
+/**
+ * Returns a stable UUID-format unique ID derived from the file-system kind and
+ * absolute path using SHA-256 via the Web Crypto API.
+ *
+ * @param {string} kind - 'file' | 'directory'
+ * @param {string} path
+ * @returns {Promise<string>}
+ */
+async function pathToUUID (kind, path) {
+  const data = new TextEncoder().encode(`${kind}:${path}`)
+  const hashBuf = await crypto.subtle.digest('SHA-256', data)
+  const hex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
 /** @param {string} path */
-async function fileFrom (path) {
+function fileFrom (path) {
   const e = Deno.readFileSync(path)
-  const s = await Deno.stat(path)
-  return new File([e], basename(path), { lastModified: Number(s.mtime) })
+  const s = Deno.statSync(path)
+  return new File([new Blob([e], { type: 'application/octet-stream' })], basename(path), { lastModified: Number(s.mtime) })
+}
+
+const openWritables = new Map()
+
+/**
+ * @param {string} path
+ */
+function isLocked (path) {
+  for (const [lockedPath, count] of openWritables) {
+    if (count > 0 && (lockedPath === path || lockedPath.startsWith(path + '/'))) {
+      return true
+    }
+  }
+  return false
 }
 
 export class Sink {
   /**
-   * @param {Deno.File} fileHandle
+   * @param {Deno.FsFile} fileHandle
+   * @param {number} size
+   * @param {string} path
+   * @param {string} tempPath
+   * @param {boolean} [inPlace]
+   */
+  constructor (fileHandle, size, path, tempPath, inPlace = false) {
+    this.fileHandle = fileHandle
+    /** Exposed so FileSystemWritableFileStream can read the initial file size. */
+    this.size = size
+    this._path = path
+    this._tempPath = tempPath
+    this._inPlace = inPlace
+    openWritables.set(path, (openWritables.get(path) || 0) + 1)
+  }
+
+  async abort () {
+    await this.fileHandle.close()
+    if (!this._inPlace) {
+      await Deno.remove(this._tempPath).catch(() => {})
+    }
+    openWritables.set(this._path, openWritables.get(this._path) - 1)
+  }
+
+  /**
+   * Write a Blob at the given byte offset.
+   * Called by the outer FileSystemWritableFileStream after WriteParams parsing.
+   *
+   * @param {Blob} blob
+   * @param {number} position
+   */
+  async write (blob, position) {
+    await this.fileHandle.seek(position, Deno.SeekMode.Start)
+    for await (const data of blob.stream()) {
+      await this.fileHandle.write(data)
+    }
+    this.size = Math.max(this.size, position + blob.size)
+  }
+
+  /**
+   * Truncate (or zero-extend) the file to exactly `size` bytes.
+   *
    * @param {number} size
    */
-  constructor (fileHandle, size) {
-    this.fileHandle = fileHandle
+  async truncate (size) {
+    await this.fileHandle.truncate(size)
     this.size = size
-    this.position = 0
-  }
-  async abort() {
-    await this.fileHandle.close()
-  }
-  async write (chunk) {
-    if (typeof chunk === 'object') {
-      if (chunk.type === 'write') {
-        if (Number.isInteger(chunk.position) && chunk.position >= 0) {
-          this.position = chunk.position
-        }
-        if (!('data' in chunk)) {
-          await this.fileHandle.close()
-          throw new DOMException(...SYNTAX('write requires a data argument'))
-        }
-        chunk = chunk.data
-      } else if (chunk.type === 'seek') {
-        if (Number.isInteger(chunk.position) && chunk.position >= 0) {
-          if (this.size < chunk.position) {
-            throw new DOMException(...INVALID)
-          }
-          this.position = chunk.position
-          return
-        } else {
-          await this.fileHandle.close()
-          throw new DOMException(...SYNTAX('seek requires a position argument'))
-        }
-      } else if (chunk.type === 'truncate') {
-        if (Number.isInteger(chunk.size) && chunk.size >= 0) {
-          await this.fileHandle.truncate(chunk.size)
-          this.size = chunk.size
-          if (this.position > this.size) {
-            this.position = this.size
-          }
-          return
-        } else {
-          await this.fileHandle.close()
-          throw new DOMException(...SYNTAX('truncate requires a size argument'))
-        }
-      }
-    }
-
-    if (chunk instanceof ArrayBuffer) {
-      chunk = new Uint8Array(chunk)
-    } else if (typeof chunk === 'string') {
-      chunk = new TextEncoder().encode(chunk)
-    } else if (chunk instanceof Blob) {
-      await this.fileHandle.seek(this.position, Deno.SeekMode.Start)
-      for await (const data of chunk.stream()) {
-        const written = await this.fileHandle.write(data)
-        this.position += written
-        this.size += written
-      }
-      return
-    }
-    await this.fileHandle.seek(this.position, Deno.SeekMode.Start)
-    const written = await this.fileHandle.write(chunk)
-    this.position += written
-    this.size += written
   }
 
   async close () {
     await this.fileHandle.close()
+    if (!this._inPlace) {
+      await Deno.rename(this._tempPath, this._path)
+    }
+    openWritables.set(this._path, openWritables.get(this._path) - 1)
   }
 }
 
@@ -116,15 +127,87 @@ export class FileHandle {
     return this.#path
   }
 
-  /** @param {{ keepExistingData: boolean; }} opts */
+  getUniqueId () {
+    return pathToUUID(this.kind, this.#path)
+  }
+
+  /**
+   * @param {{ keepExistingData?: boolean; mode?: 'exclusive-atomic' | 'exclusive-in-place' | 'siloed' }} opts
+   */
   async createWritable (opts) {
+    const mode = opts.mode
+
+    // Exclusive modes allow only one writer at a time.
+    if (mode === 'exclusive-atomic' || mode === 'exclusive-in-place') {
+      if (isLocked(this.#path)) throw new DOMException(...NO_MOD)
+    }
+
+    if (mode === 'exclusive-atomic') {
+      // Write to a temp file and rename atomically on close.
+      const tempPath = this.#path + '.' + Math.random().toString(36).slice(2) + '.tmp'
+      if (opts.keepExistingData) {
+        await Deno.copyFile(this.#path, tempPath).catch(err => {
+          if (err.name === 'NotFound') throw new DOMException(...GONE)
+          throw err
+        })
+      }
+      const fileHandle = await Deno.open(tempPath, {
+        write: true,
+        create: true,
+        truncate: !opts.keepExistingData,
+      }).catch(err => {
+        if (err.name === 'NotFound') throw new DOMException(...GONE)
+        throw err
+      })
+      const { size } = await fileHandle.stat()
+      return new Sink(fileHandle, size, this.#path, tempPath, false)
+    }
+
+    // 'exclusive-in-place', 'siloed', and the default (undefined mode) all write directly
+    // to the real file — Deno's native in-place I/O model.  Note that for 'siloed', this
+    // means each concurrent writer shares the same underlying file descriptor rather than
+    // having its own independent swap buffer; 'exclusive-atomic' is the mode to use when
+    // true independent-buffer / last-close-wins semantics are required.
     const fileHandle = await Deno.open(this.#path, { write: true, truncate: !opts.keepExistingData }).catch(err => {
       if (err.name === 'NotFound') throw new DOMException(...GONE)
       throw err
     })
 
     const { size } = await fileHandle.stat()
-    return new Sink(fileHandle, size)
+    return new Sink(fileHandle, size, this.#path, this.#path, true)
+  }
+
+  async move (dest, newName) {
+    if (newName === '') throw new TypeError('Name cannot be empty.')
+    const name = newName || this.name
+    const destPath = dest ? dest.#getPath.call(dest) : dirname(this.#path)
+    const newPath = join(destPath, name)
+
+    if (newPath === this.#path) return
+
+    if (newName && (newName.includes('/') || newPath.includes('\\') || newName === '.' || newName === '..')) {
+      throw new TypeError('Name contains invalid characters.')
+    }
+
+    const stat = await Deno.lstat(newPath).catch(() => null)
+    if (stat && stat.isDirectory) {
+      throw new DOMException(...MOD_ERR)
+    }
+
+    await Deno.rename(this.#path, newPath).catch(err => {
+      if (err.name === 'NotFound') throw new DOMException(...GONE)
+      throw err
+    })
+
+    this.#path = newPath
+    this.name = name
+  }
+
+  async remove () {
+    await Deno.remove(this.#path).catch(err => {
+      if (err.name === 'NotFound') throw new DOMException(...GONE)
+      throw err
+    })
   }
 }
 
@@ -144,6 +227,10 @@ export class FolderHandle {
 
   #getPath() {
     return this.#path
+  }
+
+  getUniqueId () {
+    return pathToUUID(this.kind, this.#path)
   }
 
   /** @returns {AsyncGenerator<[string, FileHandle | FolderHandle]>} */
@@ -232,6 +319,23 @@ export class FolderHandle {
       }
     } else {
       await Deno.remove(path)
+    }
+  }
+
+  async remove (options = {}) {
+    const stat = await Deno.lstat(this.#path).catch(err => {
+      if (err.name === 'NotFound') throw new DOMException(...GONE)
+      throw err
+    })
+    if (stat.isDirectory) {
+      if (!options.recursive) {
+        for await (const _ of Deno.readDir(this.#path)) {
+          throw new DOMException(...MOD_ERR)
+        }
+      }
+      await Deno.remove(this.#path, { recursive: !!options.recursive })
+    } else {
+      await Deno.remove(this.#path)
     }
   }
 }

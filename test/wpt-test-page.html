@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WPT File System Tests (via polyfill)</title>
+  <script src="/wpt/resources/testharness.js"></script>
+</head>
+<body>
+  <div id="log"></div>
+  <script>
+    // Configure the WPT test harness
+    setup({
+      explicit_timeout: true,
+      explicit_done: true,
+    });
+
+    // Store results globally so Playwright can access them
+    window.__wptResults = null;
+    add_completion_callback(function(tests, harnessStatus) {
+      window.__wptResults = tests.map(function(t) {
+        return {
+          name: t.name,
+          status: t.status,
+          message: t.message || null,
+          stack: t.stack || null,
+        };
+      });
+    });
+  </script>
+  <script type="module">
+    // Import the polyfill
+    import * as fs from '/src/es6.js';
+    const { getOriginPrivateDirectory } = fs;
+
+    // Expose polyfill classes as globals (needed by some WPT test scripts)
+    Object.assign(window, fs);
+
+    // Get the test scripts to run from the URL query string
+    // e.g. ?scripts=FileSystemDirectoryHandle-getFileHandle.js,FileSystemDirectoryHandle-removeEntry.js
+    const params = new URLSearchParams(location.search);
+    const scriptNames = (params.get('scripts') || '').split(',').filter(Boolean);
+    const scriptDir = params.get('dir') || 'fs';
+
+    // ──────────────────────────────────────────────────────
+    // Set up test helpers as globals (matching WPT test-helpers.js)
+    // ──────────────────────────────────────────────────────
+
+    const kCurrentDirectory = '.';
+    const kParentDirectory = '..';
+    const kPathSeparators = ['/', '\\'];
+
+    async function getFileSize(handle) {
+      const file = await handle.getFile();
+      return file.size;
+    }
+
+    async function getFileContents(handle) {
+      const file = await handle.getFile();
+      return new Response(file).text();
+    }
+
+    async function getDirectoryEntryCount(handle) {
+      let result = 0;
+      for await (const entry of handle) {
+        result++;
+      }
+      return result;
+    }
+
+    async function getSortedDirectoryEntries(handle) {
+      let result = [];
+      for await (const entry of handle.values()) {
+        if (entry.kind === 'directory') {
+          result.push(entry.name + '/');
+        } else {
+          result.push(entry.name);
+        }
+      }
+      result.sort();
+      return result;
+    }
+
+    async function createDirectory(tOrName, nameOrParent, parent) {
+      let name, actualParent;
+      if (typeof tOrName === 'string') {
+        name = tOrName;
+        actualParent = nameOrParent;
+      } else {
+        name = nameOrParent;
+        actualParent = parent;
+      }
+      return await actualParent.getDirectoryHandle(name, { create: true });
+    }
+
+    async function createEmptyFile(tOrName, nameOrParent, parent) {
+      let name, actualParent;
+      if (typeof tOrName === 'string') {
+        name = tOrName;
+        actualParent = nameOrParent;
+      } else {
+        name = nameOrParent;
+        actualParent = parent;
+      }
+      const handle = await actualParent.getFileHandle(name, { create: true });
+      assert_equals(await getFileSize(handle), 0);
+      return handle;
+    }
+
+    async function createFileWithContents(tOrName, nameOrContents, contentsOrParent, parent) {
+      let name, contents, actualParent;
+      if (typeof tOrName === 'string') {
+        name = tOrName;
+        contents = nameOrContents;
+        actualParent = contentsOrParent;
+      } else {
+        name = nameOrContents;
+        contents = contentsOrParent;
+        actualParent = parent;
+      }
+      const handle = await createEmptyFile(name, actualParent);
+      const writer = await handle.createWritable();
+      await writer.write(new Blob([contents]));
+      await writer.close();
+      return handle;
+    }
+
+    async function cleanup(test, value, cleanup_func) {
+      test.add_cleanup(async () => {
+        try { await cleanup_func(); } catch (e) { /* ignore */ }
+      });
+      return value;
+    }
+
+    async function cleanup_writable(test, value) {
+      return cleanup(test, value, async () => {
+        try { await value.close(); } catch (e) { /* ignore */ }
+      });
+    }
+
+    function createFileHandles(tOrDir, dirOrFirstName, ...rest) {
+      let dir, fileNames;
+      if (tOrDir && typeof tOrDir.getFileHandle === 'function') {
+        dir = tOrDir;
+        fileNames = [dirOrFirstName, ...rest];
+      } else if (tOrDir && typeof tOrDir.getDirectoryHandle === 'function') {
+        dir = tOrDir;
+        fileNames = [dirOrFirstName, ...rest];
+      } else {
+        dir = dirOrFirstName;
+        fileNames = rest;
+      }
+      return Promise.all(
+        fileNames.map(fileName => dir.getFileHandle(fileName, { create: true }))
+      );
+    }
+
+    function createDirectoryHandles(tOrDir, dirOrFirstName, ...rest) {
+      let dir, dirNames;
+      if (tOrDir && typeof tOrDir.getDirectoryHandle === 'function') {
+        dir = tOrDir;
+        dirNames = [dirOrFirstName, ...rest];
+      } else {
+        dir = dirOrFirstName;
+        dirNames = rest;
+      }
+      return Promise.all(
+        dirNames.map(dirName => dir.getDirectoryHandle(dirName, { create: true }))
+      );
+    }
+
+    // Cleanup sandboxed filesystem - ignores errors to handle locked files gracefully
+    async function cleanupSandboxedFileSystem(root) {
+      const entries = [];
+      for await (const [name, entry] of root) {
+        entries.push([name, entry]);
+      }
+      await Promise.allSettled(
+        entries.map(([name, entry]) =>
+          root.removeEntry(name, { recursive: entry.kind === 'directory' })
+        )
+      );
+    }
+
+    // recordingReadableStream - creates a ReadableStream that records events
+    function recordingReadableStream(extras = {}, strategy) {
+      let controllerToCopyOver;
+      const stream = new ReadableStream({
+        type: extras.type,
+        start(controller) {
+          controllerToCopyOver = controller;
+          if (extras.start) {
+            return extras.start(controller);
+          }
+        },
+        pull(controller) {
+          if (extras.pull) {
+            return extras.pull(controller);
+          }
+        },
+        cancel(reason) {
+          if (extras.cancel) {
+            return extras.cancel(reason);
+          }
+        }
+      }, strategy);
+      stream.controller = controllerToCopyOver;
+      return stream;
+    }
+
+    // ──────────────────────────────────────────────────────
+    // Set up directory_test using the polyfill's memory adapter
+    // ──────────────────────────────────────────────────────
+
+    const root = await getOriginPrivateDirectory(import('/src/adapters/memory.js'));
+
+    // Override navigator.storage.getDirectory to use the polyfill root.
+    // This ensures that promise_tests (like "can remove the root of a sandbox
+    // file system" in FileSystemBaseHandle-remove.js) that call
+    // navigator.storage.getDirectory() directly use our polyfill instead of
+    // the native OPFS, which may not support remove() in all browsers (e.g. Firefox).
+    // Safari (WebKit) may not have navigator.storage at all, so handle both cases.
+    try {
+      if (navigator.storage == null) {
+        Object.defineProperty(navigator, 'storage', {
+          value: { getDirectory: async () => root },
+          writable: true,
+          configurable: true,
+        });
+      } else {
+        Object.defineProperty(navigator.storage, 'getDirectory', {
+          value: async () => root,
+          writable: true,
+          configurable: true,
+        });
+      }
+    } catch (e) {
+      // Ignore if navigator.storage cannot be overridden in this browser
+    }
+
+    function directory_test(func, description) {
+      promise_test(async t => {
+        await cleanupSandboxedFileSystem(root);
+        t.add_cleanup(async () => {
+          await cleanupSandboxedFileSystem(root);
+        });
+        await func(t, root);
+      }, description);
+    }
+
+    // Expose everything as globals for WPT test scripts
+    Object.assign(window, {
+      kCurrentDirectory,
+      kParentDirectory,
+      kPathSeparators,
+      getFileSize,
+      getFileContents,
+      getDirectoryEntryCount,
+      getSortedDirectoryEntries,
+      createDirectory,
+      createEmptyFile,
+      createFileWithContents,
+      cleanup,
+      cleanup_writable,
+      createFileHandles,
+      createDirectoryHandles,
+      directory_test,
+      recordingReadableStream,
+      garbageCollect: () => {},
+    });
+
+    // ──────────────────────────────────────────────────────
+    // Load WPT test scripts
+    // ──────────────────────────────────────────────────────
+
+    for (const scriptName of scriptNames) {
+      try {
+        await import(`/wpt/${scriptDir}/script-tests/${scriptName}`);
+      } catch (e) {
+        // Report import errors as test failures
+        test(() => { throw e; }, `Import: ${scriptName}`);
+      }
+    }
+
+    done();
+  </script>
+</body>
+</html>

@@ -8,14 +8,21 @@ const native = globalThis.showOpenFilePicker
  * @param {boolean} [options.multiple] If you want to allow more than one file
  * @param {boolean} [options.excludeAcceptAllOption=false] Prevent user for selecting any
  * @param {Object[]} [options.accepts] Files you want to accept
- * @param {boolean} [options._preferPolyfill] If you rather want to use the polyfill instead of the native
+ * @param {('native' | 'input')[]} [options._preferredMethods] Ordered list of preferred methods
  * @returns {Promise<FileSystemFileHandle[]>}
  */
 async function showOpenFilePicker (options = {}) {
   const opts = { ...def, ...options }
 
-  if (native && !options._preferPolyfill) {
-    return native(opts)
+  const methods = options._preferredMethods || ['native', 'input']
+
+  for (const method of methods) {
+    if (method === 'native' && native) {
+      return native(opts)
+    }
+    if (method === 'input') {
+      break
+    }
   }
 
   const input = document.createElement('input')
@@ -41,11 +48,17 @@ async function showOpenFilePicker (options = {}) {
   // Lazy load while the user is choosing the directory
   const p = import('./util.js')
 
-  await new Promise(resolve => {
-    input.addEventListener('change', resolve, { once: true })
+  const evt = await new Promise(resolve => {
+    input.onchange = input.onchange = resolve
     input.click()
   })
+
+  input.onchange = input.onchange = null
   input.remove()
+
+  if (evt.type === 'cancel') {
+    throw new DOMException("Failed to execute 'showOpenFilePicker' on 'file input': The user aborted a request.", 'AbortError')
+  }
 
   return p.then(m => m.getFileHandlesFromInput(input))
 }

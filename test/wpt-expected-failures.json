@@ -1,0 +1,14 @@
+{
+  "FileSystemDirectoryHandle-getDirectoryHandle.js": [],
+  "FileSystemDirectoryHandle-getFileHandle.js": [],
+  "FileSystemDirectoryHandle-removeEntry.js": [],
+  "FileSystemFileHandle-getFile.js": [],
+  "FileSystemWritableFileStream-write.js": [],
+  "FileSystemWritableFileStream-piped.js": [],
+  "FileSystemBaseHandle-isSameEntry.js": [],
+  "FileSystemBaseHandle-remove.js": [],
+  "FileSystemBaseHandle-getUniqueId.js": [],
+  "FileSystemFileHandle-move.js": [],
+  "FileSystemWritableFileStream.js": [],
+  "FileSystemWritableFileStream-mode.js": []
+}
