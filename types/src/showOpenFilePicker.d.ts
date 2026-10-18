@@ -4,5 +4,5 @@ export function showOpenFilePicker(options?: {
     multiple?: boolean;
     excludeAcceptAllOption?: boolean;
     accepts?: any[];
-    _preferredMethods?: ('native' | 'input')[];
+    _preferredMethods?: ("native" | "input")[];
 }): Promise<FileSystemFileHandle[]>;

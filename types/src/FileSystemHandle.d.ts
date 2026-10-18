@@ -8,14 +8,21 @@ export class FileSystemHandle {
     });
     name: string;
     kind: ("file" | "directory");
-    queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<any>;
+    queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): any;
     requestPermission({ mode }?: {
         mode?: string;
-    }): Promise<any>;
+    }): any;
     remove(options?: {
         recursive?: boolean;
     }): Promise<void>;
-    isSameEntry(other: FileSystemHandle): Promise<any>;
-    [kAdapter]: any;
+    getUniqueId(): any;
+    isSameEntry(other: FileSystemHandle): any;
+    [kAdapter]: FileSystemHandle;
 }
-declare const kAdapter: unique symbol;
+export function serialize(handle: FileSystemHandle): {
+    adapter: string;
+    kind: "file" | "directory";
+    name: string;
+    [key: string]: any;
+};
+export const kAdapter: unique symbol;

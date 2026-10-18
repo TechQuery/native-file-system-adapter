@@ -12,6 +12,7 @@ export class FileHandle {
     }): boolean;
     getFile(): Promise<File>;
     createWritable(opts: any): Promise<Sink>;
+    move(dest: any, newName: any): Promise<any>;
 }
 export class FolderHandle {
     constructor(dir: DirectoryEntry, writable?: boolean);
@@ -31,6 +32,7 @@ export class FolderHandle {
     removeEntry(name: string, opts: {
         recursive: boolean;
     }): Promise<any>;
+    remove(opts?: {}): Promise<any>;
 }
 declare function _default(opts?: {}): Promise<any>;
 export default _default;

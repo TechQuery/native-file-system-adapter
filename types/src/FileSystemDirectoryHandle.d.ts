@@ -5,17 +5,16 @@ export class FileSystemDirectoryHandle extends FileSystemHandle {
         create?: boolean;
     }): Promise<FileSystemDirectoryHandle>;
     entries(): AsyncGenerator<[string, FileSystemHandle | FileSystemDirectoryHandle]>;
-
     getFileHandle(name: string, options?: {
         create?: boolean;
-    }): Promise<import("./FileSystemFileHandle.js").default>;
+    }): any;
     removeEntry(name: string, options?: {
         recursive?: boolean;
-    }): Promise<any>;
+    }): any;
     resolve(possibleDescendant: any): Promise<any[]>;
-    keys(): AsyncGenerator<any, void, unknown>;
+    keys(): AsyncGenerator<string, void, unknown>;
     values(): AsyncGenerator<FileSystemHandle | FileSystemDirectoryHandle, void, unknown>;
-    [kAdapter]: any;
+    [kAdapter]: FileSystemDirectoryHandle;
     [Symbol.asyncIterator](): AsyncGenerator<[string, FileSystemHandle | FileSystemDirectoryHandle], any, any>;
 }
 import FileSystemHandle from './FileSystemHandle.js';

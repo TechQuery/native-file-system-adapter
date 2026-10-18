@@ -9,6 +9,7 @@ export namespace errors {
     function SYNTAX(m: any): string[];
     let SECURITY: string[];
     let DISALLOWED: string[];
+    let NO_MOD: string[];
 }
 export namespace config {
     let writable: {

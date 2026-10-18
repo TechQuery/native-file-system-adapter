@@ -3,7 +3,7 @@ declare namespace config {
     let ReadableStream: {
         new (underlyingSource: UnderlyingByteSource, strategy?: {
             highWaterMark?: number;
-        }): ReadableStream<Uint8Array>;
+        }): ReadableStream<Uint8Array<ArrayBuffer>>;
         new <R = any>(underlyingSource: UnderlyingDefaultSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
         new <R = any>(underlyingSource?: UnderlyingSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
         prototype: ReadableStream;

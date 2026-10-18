@@ -1,18 +1,23 @@
 {
   "name": "@tech_query/native-file-system-adapter",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "description": "Native File System API",
   "source": "src/es6.js",
-  "main": "dist/es6.cjs",
-  "browser": "dist/es6.global.js",
+  "main": "dist/es6.js",
+  "browser": "dist/polyfill.umd.js",
   "module": "dist/es6.js",
   "targets": {
     "types": false
   },
   "exports": {
-    "types": "./types/src/es6.d.ts",
-    "import": "./dist/es6.js",
-    "require": "./dist/es6.cjs"
+    ".": {
+      "types": "./types/src/es6.d.ts",
+      "import": "./dist/es6.js"
+    },
+    "./polyfill": {
+      "import": "./dist/polyfill.js",
+      "require": "./dist/polyfill.umd.js"
+    }
   },
   "directories": {
     "example": "example"
@@ -31,7 +36,7 @@
     "test:wpt-browser:firefox": "npx playwright test --project=firefox",
     "test:wpt-browser:webkit": "npx playwright test --project=webkit",
     "fetch-wpt": "bash scripts/fetch-wpt.sh",
-    "build": "rm -rf .parcel-cache/ dist/ types/  &&  tsc -p jsconfig.json  &&  parcel build",
+    "build": "rm -rf dist/ types/  &&  tsc -p jsconfig.json  &&  tsdown src/es6.js src/polyfill.js --format esm  &&  tsdown src/polyfill.js --format umd --no-clean",
     "prepublishOnly": "npm run build",
     "_prepublishOnly": "rm -rf types && tsc -p jsconfig.json"
   },
@@ -95,11 +100,17 @@
     }
   ],
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.64.1",
     "@types/filesystem": "^0.0.36",
-    "parcel": "^2.12.0",
+    "@types/node": "^22.20.5",
     "standard": "^17.1.2",
-    "tape": "^5.9.0",
-    "typescript": "^5.6.3"
+    "tape": "^5.10.3",
+    "tsdown": "^0.23.1",
+    "typescript": "^5.9.3"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "arrowParens": "avoid",
+    "semi": false
   }
 }

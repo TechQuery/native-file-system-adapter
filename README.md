@@ -1,4 +1,4 @@
-# Native File System adapter (ponyfill)
+# Native File System adapter (ponyfill/polyfill)
 
 What is this?
 
@@ -11,6 +11,7 @@ At a high level what we're providing is several bits:
 3. Ponyfill for `FileSystemWritableFileStream` to truncate and write data.
 4. An implementation of `navigator.storage.getDirectory()` (`getOriginPrivateDirectory`) which can read & write data to and from several sources called adapters, not just the browser sandboxed file system
 5. An polyfill for `DataTransferItem.prototype.getAsFileSystemHandle()`
+6. `/polyfill` sub module can be used to patch `globalThis` with necessary polyfills for older environments manually.
 
 ## File system adapters
 
@@ -18,12 +19,12 @@ When `getOriginPrivateDirectory` is called with no arguments, the browser's nati
 
 Optionally, a file system backend adapter can be provided as an argument. This ponyfill ships with a few backends built in:
 
-* `node`: Uses NodeJS's `fs` module
-* `deno`: Interact with filesystem using Deno
-* `sandbox` (deprecated): Uses [requestFileSystem](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestFileSystem). Only supported in Chromium-based browsers using the `Blink` engine.
-* `indexeddb`: Stores files into the browser's `IndexedDB` object database.
-* `memory`: Stores files in-memory. Thus, it is a temporary file store that clears when the user navigates away.
-* `cache`: Stores files with the browser's [Cache API](https://web.dev/cache-api-quick-guide/) in request/response pairs.
+- `node`: Uses NodeJS's `fs` module
+- `deno`: Interact with filesystem using Deno
+- `sandbox` (deprecated): Uses [requestFileSystem](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestFileSystem). Only supported in Chromium-based browsers using the `Blink` engine.
+- `indexeddb`: Stores files into the browser's `IndexedDB` object database.
+- `memory`: Stores files in-memory. Thus, it is a temporary file store that clears when the user navigates away.
+- `cache`: Stores files with the browser's [Cache API](https://web.dev/cache-api-quick-guide/) in request/response pairs.
 
 You can even load in your own underlying adapter and get the same set of API's
 
@@ -34,6 +35,7 @@ It's not trying to interfere with the changing spec by using other properties th
 ( Some parts are lazy loaded when needed )
 
 ### Updating from 2.x to 3.x
+
 v3 removed all top level await that conditionally loaded polyfills like
 WritableStream, DOMException, and Blob/File. considering that now all latest
 up to date env have this built in globally on `globalThis` namespace. This makes
@@ -45,7 +47,6 @@ then you can provide your own polyfill and set it up with our config before any
 other script is evaluated
 
 ```js
-
 import config from 'native-file-system-adapter/config.js'
 // This is the default config that you could override as needed.
 Object.assign(config, {
@@ -54,13 +55,11 @@ Object.assign(config, {
   TransformStream: globalThis.TransformStream,
   DOMException: globalThis.DOMException,
   Blob: globalThis.Blob,
-  File: globalThis.File
+  File: globalThis.File,
 })
 // continue like normal.
 import xyz from 'native-file-system-adapter'
 ```
-
-
 
 ### ES import in browser
 
@@ -71,7 +70,9 @@ import xyz from 'native-file-system-adapter'
   // same as calling navigator.storage.getDirectory()
   const dirHandle1 = await getOriginPrivateDirectory()
   // or use an adapter (see adapters table above for a list of available adapters)
-  const dirHandle2 = await getOriginPrivateDirectory(import('https://cdn.jsdelivr.net/npm/native-file-system-adapter/src/adapters/<adapterName>.js'))
+  const dirHandle2 = await getOriginPrivateDirectory(
+    import('https://cdn.jsdelivr.net/npm/native-file-system-adapter/src/adapters/<adapterName>.js'),
+  )
 </script>
 ```
 
@@ -83,6 +84,7 @@ npm i native-file-system-adapter
 import { getOriginPrivateDirectory } from 'native-file-system-adapter'
 import indexedDbAdapter from 'native-file-system-adapter/lib/adapters/indexeddb.js'
 import nodeAdapter from 'native-file-system-adapter/lib/adapters/node.js'
+
 const dirHandle = await getOriginPrivateDirectory(indexedDbAdapter)
 const nodeDirHandle = await getOriginPrivateDirectory(nodeAdapter, './real-dir')
 ```
@@ -98,7 +100,7 @@ It is equivalent to the `navigator.storage.getDirectory()` method introduced by 
 ```js
 import { getOriginPrivateDirectory, support } from 'native-file-system-adapter'
 // Uses native implementation - same as calling navigator.storage.getDirectory()
-await getOriginPrivateDirectory().catch(err => {
+await getOriginPrivateDirectory().catch(error => {
   // native implementation not supported fallback to any of the adapters
 
   // Blinks old sandboxed api
@@ -123,12 +125,21 @@ await getOriginPrivateDirectory().catch(err => {
 ### File and directory pickers
 
 ```js
-import { showDirectoryPicker, showOpenFilePicker } from 'native-file-system-adapter'
+import {
+  showDirectoryPicker,
+  showOpenFilePicker,
+} from 'native-file-system-adapter'
 // The polyfilled (file input) version will turn into a memory adapter
 // You will have read & write permission on the memory adapter,
 // you might want to transfer (copy) the handle to another adapter
-const [fileHandle] = await showOpenFilePicker({_preferredMethods: ['native', 'input'], ...sameOpts})
-const dirHandle = await showDirectoryPicker({_preferredMethods: ['native', 'input'], ...sameOpts})
+const [fileHandle] = await showOpenFilePicker({
+  _preferredMethods: ['native', 'input'],
+  ...sameOpts,
+})
+const dirHandle = await showDirectoryPicker({
+  _preferredMethods: ['native', 'input'],
+  ...sameOpts,
+})
 ```
 
 ### Drag and drop
@@ -136,9 +147,11 @@ const dirHandle = await showDirectoryPicker({_preferredMethods: ['native', 'inpu
 ```js
 // DataTransferItem.prototype.getAsFileSystemHandle() is conditionally polyfilled
 import 'native-file-system-adapter'
-window.ondrop = async evt => {
-  evt.preventDefault()
-  for (let item of evt.dataTransfer.items) {
+
+window.ondrop = async event => {
+  event.preventDefault()
+
+  for (let item of event.dataTransfer.items) {
     const handle = await item.getAsFileSystemHandle()
     console.log(handle)
   }
@@ -148,14 +161,17 @@ window.ondrop = async evt => {
 ### Copy file handles to sandboxed file system
 
 ```js
-import { showOpenFilePicker, getOriginPrivateDirectory } from 'native-file-system-adapter'
+import {
+  showOpenFilePicker,
+  getOriginPrivateDirectory,
+} from 'native-file-system-adapter'
 
 // request user to select a file
 const [fileHandle] = await showOpenFilePicker({
   types: [], // default
   multiple: false, // default
   excludeAcceptAllOption: false, // default
-  _preferredMethods: ['native', 'input'] // default
+  _preferredMethods: ['native', 'input'], // default
 })
 
 // returns a File Instance
@@ -175,14 +191,19 @@ await writable.close()
 import { showSaveFilePicker } from 'native-file-system-adapter'
 
 const fileHandle = await showSaveFilePicker({
-  _preferredMethods: ['native', 'sw-transferable-stream', 'sw-message-channel', 'constructing-blob'], // default
+  _preferredMethods: [
+    'native',
+    'sw-transferable-stream',
+    'sw-message-channel',
+    'constructing-blob',
+  ], // default
   suggestedName: 'Untitled.png',
   types: [
-    { accept: { "image/png": [ "png" ] } },
-    { accept: { "image/jpg": [ "jpg" ] } },
-    { accept: { "image/webp": [ "webp" ] } }
+    { accept: { 'image/png': ['png'] } },
+    { accept: { 'image/jpg': ['jpg'] } },
+    { accept: { 'image/webp': ['webp'] } },
   ],
-  excludeAcceptAllOption: false // default
+  excludeAcceptAllOption: false, // default
 })
 
 // Look at what extension they chosen
@@ -191,7 +212,7 @@ const extensionChosen = fileHandle.name.split('.').pop()
 const blob = {
   jpg: generateCanvasBlob({ type: 'blob', format: 'jpg' }),
   png: generateCanvasBlob({ type: 'blob', format: 'png' }),
-  webp: generateCanvasBlob({ type: 'blob', format: 'webp' })
+  webp: generateCanvasBlob({ type: 'blob', format: 'webp' }),
 }[extensionChosen]
 
 await blob.stream().pipeTo(fileHandle.createWritable())
@@ -204,7 +225,7 @@ await writer.close()
 ### Serializable handles
 
 Any handle backed by an adapter that supports serialization can be converted to a
-plain object with the top-level `serialize()` function.  The object can later be
+plain object with the top-level `serialize()` function. The object can later be
 passed directly to `getOriginPrivateDirectory()` to reconstruct an equivalent handle.
 
 The serialized object always includes an `adapter` field encoding the adapter module
@@ -213,12 +234,15 @@ URL and the constructor name (`"<moduleUrl>:<ConstructorName>"`), so that
 
 If `serialize()` is called with a **native** (non-polyfilled) `FileSystemHandle` —
 e.g. one obtained from the browser's own `showOpenFilePicker()` — it returns the
-handle object as-is.  Likewise, passing a native handle directly to
+handle object as-is. Likewise, passing a native handle directly to
 `getOriginPrivateDirectory()` returns it unchanged, so code that works with either
 native or polyfill handles does not need special-casing.
 
 ```js
-import { getOriginPrivateDirectory, serialize } from 'native-file-system-adapter'
+import {
+  getOriginPrivateDirectory,
+  serialize,
+} from 'native-file-system-adapter'
 import * as nodeAdapter from 'native-file-system-adapter/src/adapters/node.js'
 
 // Obtain a handle the normal way
@@ -253,6 +277,7 @@ const dirHandle = await root.getDirectoryHandle('docs', { create: true })
 const serialized = serialize(dirHandle)
 
 const restoredDir = await getOriginPrivateDirectory(serialized)
+
 for await (const [name] of restoredDir) {
   console.log(name)
 }
@@ -261,19 +286,22 @@ for await (const [name] of restoredDir) {
 #### Memory adapter — self-contained snapshots
 
 The memory adapter includes the complete file/directory data in the serialized
-object, making it self-contained.  The serialized data can be stored in IndexedDB
+object, making it self-contained. The serialized data can be stored in IndexedDB
 (which natively supports `File` objects) and used to reconstruct the tree in a new
 session:
 
 ```js
-import { getOriginPrivateDirectory, serialize } from 'native-file-system-adapter'
+import {
+  getOriginPrivateDirectory,
+  serialize,
+} from 'native-file-system-adapter'
 import * as memoryAdapter from 'native-file-system-adapter/src/adapters/memory.js'
 
 const root = await getOriginPrivateDirectory(memoryAdapter)
-const fh = await root.getFileHandle('temp.txt', { create: true })
-const w = await fh.createWritable()
-await w.write('hello')
-await w.close()
+const handler = await root.getFileHandle('temp.txt', { create: true })
+const writer = await handler.createWritable()
+await writer.write('hello')
+await writer.close()
 
 // FolderHandle serializes the full subtree (including File objects)
 const snapshot = serialize(root)
@@ -292,9 +320,9 @@ const restoredRoot = await getOriginPrivateDirectory(snapshot)
 
 #### Security note
 
-The serialized object may expose absolute file-system paths.  This is
+The serialized object may expose absolute file-system paths. This is
 intentional — this library is primarily used as a server-side or polyfill
-utility where path privacy is not a concern.  Do not expose serialized handles
+utility where path privacy is not a concern. Do not expose serialized handles
 to untrusted clients.
 
 ## Supported browsers
@@ -304,7 +332,6 @@ When importing as an ES module, browsers that support [dynamic imports](https://
 When the directory picker falls back to `input` elements, the browser must support [webkitdirectory](https://caniuse.com/mdn-api_htmlinputelement_webkitdirectory) and [webkitRelativePath](https://caniuse.com/mdn-api_file_webkitrelativepath). Because of this, support for picking directories is generally poor on Mobile browsers.
 
 For drag and drop, the `getAsFileSystemHandle()` polyfill depends on the `File and Directory Entries API` support, more specifically [FileSystemDirectoryEntry](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemDirectoryEntry), [FileSystemFileEntry](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemFileEntry) and [webkitGetAsEntry](https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItem/webkitGetAsEntry).
-
 
 ## Limitations
 
@@ -317,9 +344,10 @@ For drag and drop, the `getAsFileSystemHandle()` polyfill depends on the `File a
 
 Saving/downloading a file is borrowing some of ideas from [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js).
 The difference is:
- - Using service worker is optional choice with this adapter.
- - It does not rely on some man-in-the-middle or external hosted service worker.
- - If you want to stream large data to the disk directly instead of taking up much RAM you need to set up a service worker yourself.<br>(note that it requires https - but again worker is optional)
+
+- Using service worker is optional choice with this adapter.
+- It does not rely on some man-in-the-middle or external hosted service worker.
+- If you want to stream large data to the disk directly instead of taking up much RAM you need to set up a service worker yourself.<br>(note that it requires https - but again worker is optional)
 
 to set up a service worker you have to basically copy [the example](https://github.com/jimmywarting/native-file-system-adapter/tree/master/example/sw.js) and register it:
 
@@ -347,6 +375,7 @@ I recommend to follow up on this links for you to learn more about the API and h
 - https://github.com/WICG/file-system-access
 
 ## Alternatives
+
 - [browser-fs-access](https://github.com/GoogleChromeLabs/browser-fs-access) by [@tomayac](https://github.com/tomayac): A similar, more like a shim (without `getSystemDirectory`).
 - [StreamSaver](https://github.com/jimmywarting/StreamSaver.js) by [@jimmywarting](https://github.com/jimmywarting): A way to save large data to the disk directly with a writable stream <br><small>(same technique can be achieved if service worker are setup properly)</small>
 - [FileSaver](https://github.com/eligrey/FileSaver.js) by [@eligrey](https://github.com/eligrey): One among the first libs to save blobs to the disk
