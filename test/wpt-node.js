@@ -5,16 +5,50 @@
 
 import { existsSync, readdirSync, mkdirSync, rmSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
+import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
 import { getOriginPrivateDirectory } from '../src/es6.js'
 import * as fs from '../src/es6.js'
-import { installGlobals, runTests } from './wpt-harness-node.js'
+import { installGlobals, runTests, skip_test } from './wpt-harness-node.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 
 // Install WPT test harness globals
 installGlobals()
+
+const nativeFetch = globalThis.fetch
+
+globalThis.fetch = async (...args) => {
+  const [input] = args
+  const url = typeof input === 'string' ? input : input?.url
+
+  const response = await nativeFetch(...args)
+
+  if (!url?.startsWith('data:') || !response.body) return response
+
+  const reader = response.body.getReader()
+
+  const body = new ReadableStream({
+    async pull (controller) {
+      await setTimeout(10)
+
+      if (controller.desiredSize === null) return
+
+      const { value, done } = await reader.read()
+
+      if (done) controller.close()
+      else controller.enqueue(value)
+    },
+    cancel (reason) { return reader.cancel(reason) }
+  })
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  })
+}
 
 process.on('unhandledRejection', (err) => {
   if (err.code === 'ERR_INVALID_STATE') {
@@ -195,6 +229,21 @@ async function cleanupSandboxedFileSystem (root) {
 }
 
 let currentRoot
+
+const NODE_UNSUPPORTED_TESTS = new Map([
+  ['isSameEntry with a file handle that was just cloned via postMessage', 'Node structured cloning does not preserve polyfill adapter identity'],
+  ['isSameEntry with a directory handle that was just cloned via postMessage', 'Node structured cloning does not preserve polyfill adapter identity'],
+  ['isSameEntry with a root directory handle that was just cloned via postMessage', 'Node structured cloning does not preserve polyfill adapter identity']
+])
+
+function skipUnsupportedNodeTest (description) {
+  const reason = NODE_UNSUPPORTED_TESTS.get(description)
+  if (!reason) return false
+
+  skip_test(description, reason)
+  return true
+}
+
 const oldNavigator = globalThis.navigator
 delete globalThis.navigator
 Object.defineProperty(globalThis, 'navigator', {
@@ -209,6 +258,8 @@ Object.defineProperty(globalThis, 'navigator', {
 })
 
 globalThis.directory_test = function directory_test (func, description) {
+  if (skipUnsupportedNodeTest(description)) return
+
   promise_test(async t => {
     currentRoot = await getOriginPrivateDirectory(import('../src/adapters/memory.js'))
     await cleanupSandboxedFileSystem(currentRoot)
@@ -324,6 +375,8 @@ for (const script of enabledScripts) {
 if (nodeRoot) {
   const nodeAdapter = await import('../src/adapters/node.js')
   globalThis.directory_test = function directory_test (func, description) {
+    if (skipUnsupportedNodeTest(description)) return
+
     promise_test(async t => {
       currentRoot = await getOriginPrivateDirectory(import('../src/adapters/node.js'), testFolderPath)
       if (nodeAdapter.clearLocks) nodeAdapter.clearLocks()

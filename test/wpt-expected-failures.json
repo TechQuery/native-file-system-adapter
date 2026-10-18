@@ -5,7 +5,20 @@
   "FileSystemFileHandle-getFile.js": [],
   "FileSystemWritableFileStream-write.js": [],
   "FileSystemWritableFileStream-piped.js": [],
-  "FileSystemBaseHandle-isSameEntry.js": [],
+  "FileSystemBaseHandle-isSameEntry.js": [
+    {
+      "name": "isSameEntry with a file handle that was just cloned via postMessage",
+      "reason": "Structured cloning strips the prototype and private adapter identity from this userland polyfill handle."
+    },
+    {
+      "name": "isSameEntry with a directory handle that was just cloned via postMessage",
+      "reason": "Structured cloning strips the prototype and private adapter identity from this userland polyfill handle."
+    },
+    {
+      "name": "isSameEntry with a root directory handle that was just cloned via postMessage",
+      "reason": "Structured cloning strips the prototype and private adapter identity from this userland polyfill handle."
+    }
+  ],
   "FileSystemBaseHandle-remove.js": [],
   "FileSystemBaseHandle-getUniqueId.js": [],
   "FileSystemFileHandle-move.js": [],

@@ -12,4 +12,5 @@
   "javascript.suggest.completeJSDocs": true,
   "javascript.suggest.autoImports": true,
   "js/ts.implicitProjectConfig.checkJs": true,
+  "js/ts.tsdk.path": "node_modules\\typescript\\lib",
 }

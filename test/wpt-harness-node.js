@@ -143,6 +143,10 @@ export function test_fn (fn, description) {
   results.push({ fn, description, type: 'sync' })
 }
 
+export function skip_test (description, reason) {
+  results.push({ description, reason, type: 'skip' })
+}
+
 export function setup (opts) {
   // No-op in Node.js - used for browser configuration
 }
@@ -158,6 +162,7 @@ export function done () {
 export async function runTests () {
   let passed = 0
   let failed = 0
+  let skipped = 0
   let total = 0
   const failures = []
 
@@ -172,6 +177,11 @@ export async function runTests () {
   process.on('unhandledRejection', unhandledHandler)
 
   for (const entry of results) {
+    if (entry.type === 'skip') {
+      skipped++
+      console.log(`  \x1b[33m↷\x1b[0m ${entry.description} (skipped: ${entry.reason})`)
+      continue
+    }
     total++
     const cleanups = []
     const t = {
@@ -211,13 +221,14 @@ export async function runTests () {
   }
 
   console.log(`\n  ${passed} passed, ${failed} failed, ${total} total\n`)
+  if (skipped > 0) console.log(`  ${skipped} skipped\n`)
 
   // Clear results for next script
   results.length = 0
 
   process.off('unhandledRejection', unhandledHandler)
 
-  return { passed, failed, total, failures }
+  return { passed, failed, skipped, total, failures }
 }
 
 // ──────────────────────────────────────────────────────
@@ -239,6 +250,7 @@ export function installGlobals () {
     promise_rejects_dom,
     promise_rejects_js,
     promise_rejects_exactly,
+    skip_test,
     promise_test,
     test: test_fn,
     setup,
