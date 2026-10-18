@@ -66,6 +66,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           VERSION_TAG: ${{ github.ref_name }}
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
         run: |
           if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
             echo "Skipping publish because NODE_AUTH_TOKEN is not set."
